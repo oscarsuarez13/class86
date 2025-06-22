@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Registro de Asistencia Docente</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -22,11 +23,17 @@
     table {
       margin: 20px auto;
       border-collapse: collapse;
-      width: 90%;
+      width: 95%;
     }
     th, td {
       padding: 10px;
       border: 1px solid #000;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -41,15 +48,27 @@
     <thead>
       <tr>
         <th>Nombre</th>
+        <th>Fecha de Entrada</th>
         <th>Hora de Entrada</th>
+        <th>Fecha de Salida</th>
         <th>Hora de Salida</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
 
+  <button onclick="exportarExcel()">📤 Exportar a Excel</button>
+
   <script>
-    const registros = {}; // Objeto para guardar registros por nombre
+    const registros = {};
+
+    function getFechaActual() {
+      const ahora = new Date();
+      const yyyy = ahora.getFullYear();
+      const mm = String(ahora.getMonth() + 1).padStart(2, '0');
+      const dd = String(ahora.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
 
     function getHoraActual() {
       const ahora = new Date();
@@ -57,29 +76,53 @@
     }
 
     function registrar(nombre) {
+      const fecha = getFechaActual();
       const hora = getHoraActual();
       const table = document.querySelector("#logTable tbody");
 
-      // Si el nombre ya está registrado pero sin salida, se registra la salida
-      if (registros[nombre] && !registros[nombre].salida) {
-        registros[nombre].salida = hora;
-        // Actualiza la fila existente
-        registros[nombre].fila.cells[2].textContent = hora;
-        document.getElementById("result").textContent = `👋 ${nombre} registró su salida a las ${hora}`;
+      if (registros[nombre] && !registros[nombre].fechaSalida) {
+        registros[nombre].fechaSalida = fecha;
+        registros[nombre].horaSalida = hora;
+        registros[nombre].fila.cells[3].textContent = fecha;
+        registros[nombre].fila.cells[4].textContent = hora;
+        document.getElementById("result").textContent = `👋 ${nombre} registró su salida el ${fecha} a las ${hora}`;
       } else {
-        // Nuevo registro de entrada
         const fila = table.insertRow();
         fila.insertCell(0).textContent = nombre;
-        fila.insertCell(1).textContent = hora;
-        fila.insertCell(2).textContent = ""; // Celda para la salida
+        fila.insertCell(1).textContent = fecha;
+        fila.insertCell(2).textContent = hora;
+        fila.insertCell(3).textContent = ""; // Fecha salida
+        fila.insertCell(4).textContent = ""; // Hora salida
 
         registros[nombre] = {
-          entrada: hora,
-          salida: null,
+          fechaEntrada: fecha,
+          horaEntrada: hora,
+          fechaSalida: null,
+          horaSalida: null,
           fila: fila
         };
-        document.getElementById("result").textContent = `✅ ${nombre} registró su entrada a las ${hora}`;
+        document.getElementById("result").textContent = `✅ ${nombre} registró su entrada el ${fecha} a las ${hora}`;
       }
+    }
+
+    function exportarExcel() {
+      const data = [["Nombre", "Fecha de Entrada", "Hora de Entrada", "Fecha de Salida", "Hora de Salida"]];
+      for (const nombre in registros) {
+        const r = registros[nombre];
+        data.push([
+          nombre,
+          r.fechaEntrada || "",
+          r.horaEntrada || "",
+          r.fechaSalida || "",
+          r.horaSalida || ""
+        ]);
+      }
+
+      const hoja = XLSX.utils.aoa_to_sheet(data);
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, "Registros");
+
+      XLSX.writeFile(libro, "registro_asistencia.xlsx");
     }
 
     const scanner = new Html5Qrcode("reader");
@@ -89,16 +132,15 @@
       { facingMode: "environment" },
       config,
       (decodedText, decodedResult) => {
-        scanner.stop(); // Detener momentáneamente el escaneo
+        scanner.stop();
         registrar(decodedText.trim());
 
-        // Reiniciar el escáner luego de 3 segundos
         setTimeout(() => {
           scanner.start({ facingMode: "environment" }, config, (d, r) => registrar(d.trim()));
         }, 3000);
       },
       (errorMessage) => {
-        // Manejo de errores (opcional)
+        // Ignorar errores menores
       }
     ).catch(err => {
       console.error("No se pudo iniciar el escáner: ", err);
