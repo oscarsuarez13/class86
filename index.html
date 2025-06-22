@@ -1,68 +1,107 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Registro de Asistencia QR</title>
-  <script src="https://unpkg.com/html5-qrcode@2.3.7/minified/html5-qrcode.min.js"></script>
+  <title>Registro de Asistencia Docente</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      background-color: #f3f3f3;
-      padding: 20px;
+      padding: 30px;
     }
     #reader {
-      width: 300px;
       margin: auto;
+      width: 300px;
     }
-    #status {
+    #result {
       margin-top: 20px;
-      font-size: 1.2em;
-      color: green;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    table {
+      margin: 20px auto;
+      border-collapse: collapse;
+      width: 90%;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #000;
     }
   </style>
 </head>
 <body>
-  <h1>Escáner de Código QR - Asistencia</h1>
+  <h1>Registro Docente con QR</h1>
+
   <div id="reader"></div>
-  <div id="status"></div>
+  <div id="result">Escanea un código QR...</div>
+
+  <h2>Historial</h2>
+  <table id="logTable">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Hora de Entrada</th>
+        <th>Hora de Salida</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
   <script>
-    const scriptUrl = "https://script.google.com/macros/s/AKfycbxG13xU60XUaGdN8dSnlNP9hiAEb7WVo9CX-jV96s9Y/dev"; // <- Reemplaza esto con la URL del Apps Script
+    const registros = {}; // Objeto para guardar registros por nombre
 
-    function onScanSuccess(decodedText, decodedResult) {
-      document.getElementById("status").innerText = "QR leído, registrando...";
-      const url = new URL(decodedText);
-      const nombre = url.searchParams.get("nombre");
-      const codigo = url.searchParams.get("codigo");
+    function getHoraActual() {
+      const ahora = new Date();
+      return ahora.toLocaleTimeString();
+    }
 
-      if (nombre && codigo) {
-        fetch(`${scriptUrl}?nombre=${encodeURIComponent(nombre)}&codigo=${encodeURIComponent(codigo)}`)
-          .then(response => response.text())
-          .then(data => {
-            document.getElementById("status").innerText = data;
-          })
-          .catch(error => {
-            document.getElementById("status").innerText = "Error en el registro.";
-            console.error(error);
-          });
+    function registrar(nombre) {
+      const hora = getHoraActual();
+      const table = document.querySelector("#logTable tbody");
+
+      // Si el nombre ya está registrado pero sin salida, se registra la salida
+      if (registros[nombre] && !registros[nombre].salida) {
+        registros[nombre].salida = hora;
+        // Actualiza la fila existente
+        registros[nombre].fila.cells[2].textContent = hora;
+        document.getElementById("result").textContent = `👋 ${nombre} registró su salida a las ${hora}`;
       } else {
-        document.getElementById("status").innerText = "QR no válido.";
+        // Nuevo registro de entrada
+        const fila = table.insertRow();
+        fila.insertCell(0).textContent = nombre;
+        fila.insertCell(1).textContent = hora;
+        fila.insertCell(2).textContent = ""; // Celda para la salida
+
+        registros[nombre] = {
+          entrada: hora,
+          salida: null,
+          fila: fila
+        };
+        document.getElementById("result").textContent = `✅ ${nombre} registró su entrada a las ${hora}`;
       }
     }
 
-    const html5QrCode = new Html5Qrcode("reader");
-    html5QrCode.start(
+    const scanner = new Html5Qrcode("reader");
+    const config = { fps: 10, qrbox: 250 };
+
+    scanner.start(
       { facingMode: "environment" },
-      {
-        fps: 10,
-        qrbox: 250
+      config,
+      (decodedText, decodedResult) => {
+        scanner.stop(); // Detener momentáneamente el escaneo
+        registrar(decodedText.trim());
+
+        // Reiniciar el escáner luego de 3 segundos
+        setTimeout(() => {
+          scanner.start({ facingMode: "environment" }, config, (d, r) => registrar(d.trim()));
+        }, 3000);
       },
-      onScanSuccess
+      (errorMessage) => {
+        // Manejo de errores (opcional)
+      }
     ).catch(err => {
-      document.getElementById("status").innerText = "Error iniciando escáner: " + err;
+      console.error("No se pudo iniciar el escáner: ", err);
     });
   </script>
 </body>
